@@ -6,8 +6,6 @@ Static, dependency-free verifier pages for Originals games. Each page recomputes
 |---|---|---|
 | Stellar Rush | 26001 | `stellar_rush.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<meteors>` |
 
-Optional `lang=zh` / `lang=en` selects the language.
-
 ## Stellar Rush algorithm
 
 - `H(x)` = SHA-256 of the UTF-8 text `x`, as lowercase hex. Seeds and hashes are used as hex text, never decoded to bytes.
