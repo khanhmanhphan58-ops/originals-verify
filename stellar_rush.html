@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stellar Rush · Provably Fair Verifier</title>
+<style>
+  :root { --bg: #14161a; --panel: #1e2127; --line: #2c3038; --text: #e6e9ee; --muted: #8b93a1; --ok: #24ee89; --bad: #ff5d73; --mine: #ff8a1e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--muted); font-weight: 600; }
+  a { color: var(--ok); }
+  .lang button { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .lang button[aria-pressed="true"] { color: var(--text); border-color: var(--muted); }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  label.wide { grid-column: 1 / -1; }
+  input, select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .grid { display: grid; grid-template-columns: repeat(25, minmax(0, 1fr)); gap: 4px; }
+  .cell { aspect-ratio: 1; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .cell.mine { background: var(--mine); color: #1b1200; border-color: var(--mine); }
+  .cell.safe { color: var(--ok); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(36, 238, 137, .15); color: var(--ok); }
+  .badge.bad { background: rgba(255, 93, 115, .15); color: var(--bad); }
+  ol { padding-left: 20px; color: var(--muted); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } .grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 data-i18n="title">Stellar Rush · Provably Fair Verifier</h1>
+    <div class="lang"><button type="button" data-lang="en">EN</button> <button type="button" data-lang="zh">中文</button></div>
+  </header>
+  <p class="note" data-i18n="intro">Everything is computed in your browser from the revealed seeds. Nothing is sent to any server.</p>
+
+  <form id="form" autocomplete="off">
+    <label class="wide"><span data-i18n="serverSeed">Server seed (revealed after the round)</span><input id="s" spellcheck="false" /></label>
+    <label><span data-i18n="clientSeed">Client seed</span><input id="c" spellcheck="false" /></label>
+    <label><span data-i18n="nonce">Nonce</span><input id="n" inputmode="numeric" /></label>
+    <label class="wide"><span data-i18n="difficulty">Difficulty (meteors)</span>
+      <select id="d">
+        <option value="1" data-i18n="d1">Easy · 1</option>
+        <option value="3" data-i18n="d3" selected>Medium · 3</option>
+        <option value="5" data-i18n="d5">Hard · 5</option>
+        <option value="10" data-i18n="d10">Daredevil · 10</option>
+      </select>
+    </label>
+  </form>
+
+  <h2 data-i18n="result">Result</h2>
+  <dl class="kv">
+    <dt data-i18n="hash">SHA256(server seed)</dt><dd id="o-hash">-</dd>
+    <dt>HMAC-SHA256</dt><dd id="o-hmac">-</dd>
+    <dt data-i18n="order">Shuffled order</dt><dd id="o-order">-</dd>
+    <dt data-i18n="mines">Meteor positions</dt><dd id="o-mines">-</dd>
+    <dt data-i18n="maxSafe">Furthest safe planet</dt><dd id="o-safe">-</dd>
+    <dt data-i18n="selfTest">Self-test vector</dt><dd id="o-test">-</dd>
+  </dl>
+  <p class="note" data-i18n="hashNote">Compare the SHA256 above with the server seed hash shown in the game before you placed the bet.</p>
+
+  <h2 data-i18n="board">Planets 1 → 25</h2>
+  <div class="grid" id="grid"></div>
+
+  <h2 data-i18n="algo">Algorithm</h2>
+  <ol>
+    <li data-i18n="a1">H(x) = SHA256 of the UTF-8 text x, as lowercase hex. Seeds and hashes are used as hex text, never decoded to bytes.</li>
+    <li data-i18n="a2">Commitment: before the bet the game shows H(serverSeed).</li>
+    <li data-i18n="a3">mac = HMAC-SHA256(key = serverSeed, message = clientSeed + ":" + nonce).</li>
+    <li data-i18n="a4">Base deck: 7,2,19,25,1,13,5,24,14,6,15,9,22,16,3,17,18,20,8,21,4,12,10,23,11.</li>
+    <li data-i18n="a5">S(items, seed): h = H(seed); the item at input index i gets key h[i:] + h[:i]; stable sort ascending by key.</li>
+    <li data-i18n="a6">order = S(S(base, mac), H(mac)). The first K numbers of order are the meteor planets (K = 1 / 3 / 5 / 10).</li>
+    <li data-i18n="a7">Advancing goes planet 1 → 25; the round crashes at the smallest meteor number on the path.</li>
+  </ol>
+  <p class="note"><span data-i18n="source">Source code:</span> <a id="src" href="./" target="_blank" rel="noopener">GitHub</a></p>
+</main>
+
+<script>
+const BASE = [7, 2, 19, 25, 1, 13, 5, 24, 14, 6, 15, 9, 22, 16, 3, 17, 18, 20, 8, 21, 4, 12, 10, 23, 11];
+const TEST = {
+  serverSeed: "0".repeat(64), clientSeed: "player", nonce: 1,
+  hash: "60e05bd1b195af2f94112fa7197a5c88289058840ce7c6df9693756bc6250f55",
+  hmac: "a5cc98019fd868cb14c284b145eba9f1bbbd04eb58c56c6d7a7ea06eebea5100",
+  order: "7,19,11,17,20,12,2,25,14,6,3,4,21,10,8,9,15,18,23,22,16,1,5,24,13",
+};
+const I18N = {
+  zh: {
+    title: "星际冲刺 · 可证明公平校验", intro: "所有计算都在你的浏览器里用已揭晓的种子完成，不会发送到任何服务器。",
+    serverSeed: "服务端种子（本局结束后揭晓）", clientSeed: "客户端种子", nonce: "Nonce", difficulty: "难度（陨石数）",
+    result: "结果", hash: "SHA256(服务端种子)", order: "洗牌结果", mines: "陨石位置", maxSafe: "最远安全星球", selfTest: "自检向量",
+    hashNote: "请把上面的 SHA256 与下注前游戏里显示的服务端种子哈希对比，二者应完全一致。",
+    board: "星球 1 → 25", algo: "算法",
+    a1: "H(x) 表示对 UTF-8 文本 x 做 SHA256，输出小写 hex 文本。种子与哈希都按 hex 文本使用，不解码为字节。",
+    a2: "承诺：下注前游戏展示 H(serverSeed)。",
+    a3: "mac = HMAC-SHA256(key = serverSeed, message = clientSeed + \":\" + nonce)。",
+    a4: "基础排列：7,2,19,25,1,13,5,24,14,6,15,9,22,16,3,17,18,20,8,21,4,12,10,23,11。",
+    a5: "S(items, seed)：h = H(seed)；输入索引为 i 的元素以 h[i:] + h[:i] 为 key，按 key 稳定升序排序。",
+    a6: "order = S(S(base, mac), H(mac))。order 的前 K 个数就是陨石所在星球（K = 1 / 3 / 5 / 10）。",
+    a7: "从 1 号星球向 25 号推进，路径上遇到的最小陨石编号即爆炸位置。",
+    source: "源代码：", d1: "简易 · 1", d3: "中型 · 3", d5: "硬质 · 5", d10: "勇者挑战 · 10", pass: "通过", fail: "失败", none: "无（可走完全程）", enter: "请输入服务端种子、客户端种子和 Nonce",
+  },
+  en: { pass: "pass", fail: "fail", none: "none (all planets safe)", enter: "Enter server seed, client seed and nonce" },
+};
+let lang = "en";
+const $ = (id) => document.getElementById(id);
+const t = (key) => I18N[lang][key] ?? I18N.en[key] ?? key;
+const enc = new TextEncoder();
+const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+
+async function sha256(text) {
+  return hex(await crypto.subtle.digest("SHA-256", enc.encode(text)));
+}
+
+async function hmacSha256(key, message) {
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", k, enc.encode(message)));
+}
+
+async function shuffle(items, seed) {
+  const h = await sha256(seed);
+  return items
+    .map((value, i) => ({ value, key: h.slice(i) + h.slice(0, i) }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map((x) => x.value);
+}
+
+async function compute(serverSeed, clientSeed, nonce) {
+  const mac = await hmacSha256(serverSeed, `${clientSeed}:${nonce}`);
+  const order = await shuffle(await shuffle(BASE, mac), await sha256(mac));
+  return { hash: await sha256(serverSeed), hmac: mac, order };
+}
+
+async function render() {
+  const serverSeed = $("s").value;
+  const clientSeed = $("c").value;
+  const nonce = $("n").value.trim();
+  const k = Number($("d").value);
+  const grid = $("grid");
+  if (!serverSeed || !clientSeed || !/^\d+$/.test(nonce)) {
+    for (const id of ["o-hash", "o-hmac", "o-order", "o-mines", "o-safe"]) $(id).textContent = "-";
+    $("o-hash").textContent = t("enter");
+    grid.innerHTML = "";
+    return;
+  }
+  const r = await compute(serverSeed, clientSeed, nonce);
+  const mines = r.order.slice(0, k);
+  const first = Math.min(...mines);
+  $("o-hash").textContent = r.hash;
+  $("o-hmac").textContent = r.hmac;
+  $("o-order").textContent = r.order.join(" ");
+  $("o-mines").textContent = mines.join(", ");
+  $("o-safe").textContent = first > 25 - k ? t("none") : String(first - 1);
+  grid.innerHTML = Array.from({ length: 25 }, (_, i) => {
+    const n = i + 1;
+    const cls = mines.includes(n) ? "mine" : n < first ? "safe" : "";
+    return `<div class="cell ${cls}">${n}</div>`;
+  }).join("");
+}
+
+async function selfTest() {
+  const r = await compute(TEST.serverSeed, TEST.clientSeed, TEST.nonce);
+  const ok = r.hash === TEST.hash && r.hmac === TEST.hmac && r.order.join() === TEST.order;
+  $("o-test").innerHTML = `<span class="badge ${ok ? "ok" : "bad"}">${t(ok ? "pass" : "fail")}</span> <code>64×"0" / player / 1</code>`;
+}
+
+function setLang(next) {
+  lang = next;
+  document.documentElement.lang = next === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    if (!el.dataset.en) el.dataset.en = el.textContent;
+    el.textContent = next === "zh" ? I18N.zh[el.dataset.i18n] ?? el.dataset.en : el.dataset.en;
+  });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === next)));
+  document.title = document.querySelector("h1").textContent;
+  selfTest();
+  render();
+}
+
+const q = new URLSearchParams(location.search);
+$("s").value = q.get("s") || "";
+$("c").value = q.get("c") || "";
+$("n").value = q.get("n") || "";
+if (["1", "3", "5", "10"].includes(q.get("d"))) $("d").value = q.get("d");
+const repo = document.querySelector('meta[name="source-repo"]');
+if (repo) $("src").href = repo.content;
+$("form").addEventListener("input", render);
+document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => setLang(b.dataset.lang)));
+setLang(q.get("lang") === "zh" || (!q.get("lang") && navigator.language.startsWith("zh")) ? "zh" : "en");
+</script>
+</body>
+</html>
