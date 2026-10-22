@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tower Legend · Provably Fair Verifier</title>
+<meta name="source-repo" content="https://github.com/khanhmanhphan58-ops/originals-verify/blob/main/tower_legend.html" />
+<style>
+  :root { --bg: #14161a; --panel: #1e2127; --line: #2c3038; --text: #e6e9ee; --muted: #8b93a1; --ok: #24ee89; --bad: #ff5d73; --trap: #ff8a1e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--muted); font-weight: 600; }
+  a { color: var(--ok); }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  label.wide { grid-column: 1 / -1; }
+  input, select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kv { display: grid; grid-template-columns: 220px 1fr; gap: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  th { color: var(--muted); font-family: inherit; font-weight: 600; }
+  .tower { display: flex; flex-direction: column-reverse; gap: 6px; max-width: 420px; }
+  .row { display: grid; gap: 6px; align-items: center; grid-template-columns: 56px repeat(var(--cols), 1fr); }
+  .row > span { color: var(--muted); font-size: 12px; }
+  .cell { height: 34px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ok); }
+  .cell.trap { background: var(--trap); color: #1b1200; border-color: var(--trap); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(36, 238, 137, .15); color: var(--ok); }
+  .badge.bad { background: rgba(255, 93, 115, .15); color: var(--bad); }
+  ol { padding-left: 20px; color: var(--muted); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tower Legend · Provably Fair Verifier</h1>
+  </header>
+  <p class="note">Everything is computed in your browser from the revealed seeds. Nothing is sent to any server.</p>
+
+  <h2>Input</h2>
+  <form id="form" autocomplete="off">
+    <label class="wide"><span>Server Seed (revealed after the round)</span><input id="s" spellcheck="false" /></label>
+    <label><span>Client Seed</span><input id="c" spellcheck="false" /></label>
+    <label><span>Nonce</span><input id="n" inputmode="numeric" /></label>
+    <label class="wide"><span>Difficulty</span>
+      <select id="d">
+        <option value="0">Easy · 4 tiles, 1 trap, 9 rows</option>
+        <option value="1">Medium · 3 tiles, 1 trap, 9 rows</option>
+        <option value="2">Hard · 2 tiles, 1 trap, 9 rows</option>
+        <option value="3">Extreme · 3 tiles, 2 traps, 6 rows</option>
+        <option value="4">Nightmare · 4 tiles, 3 traps, 6 rows</option>
+      </select>
+    </label>
+  </form>
+
+  <h2>Output</h2>
+  <dl class="kv">
+    <dt>sha256(server_seed)</dt><dd id="o-hash">-</dd>
+    <dt>Self-test vector</dt><dd id="o-test">-</dd>
+  </dl>
+  <p class="note">Compare the SHA256 above with the server seed hash shown in the game before you placed the bet.</p>
+  <table>
+    <thead><tr><th>Row</th><th>hmac_sha256(client_seed:nonce:row, server_seed)</th><th>Safe tiles</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <h2>Final Result · Bottom row first</h2>
+  <div class="tower" id="tower"></div>
+
+  <h2>Algorithm</h2>
+  <ol>
+    <li>Rules (columns, traps, rows): Easy 4/1/9, Medium 3/1/9, Hard 2/1/9, Extreme 3/2/6, Nightmare 4/3/6.</li>
+    <li>Commitment: before the bet the game shows SHA256(serverSeed) as lowercase hex.</li>
+    <li>For each row r = 0, 1, …: mac = HMAC-SHA256(key = serverSeed, message = clientSeed + ":" + nonce + ":" + r), as 32 bytes.</li>
+    <li>Candidates = [1 … columns]. For j = 0 … columns − traps − 1: u = big-endian uint32 of mac bytes [4j, 4j + 4); index = floor(u × remaining / 2³²); remove that candidate — it is a safe tile.</li>
+    <li>The removed candidates, sorted ascending, are the safe tiles of row r; the rest are traps. Tiles are numbered 1 → columns from left to right.</li>
+    <li>Multiplier after n safe rows = floor(98 × columns<sup>n</sup> / (columns − traps)<sup>n</sup>) / 100.</li>
+  </ol>
+  <p class="note"><span>Source code:</span> <a id="src" href="./" target="_blank" rel="noopener">GitHub</a></p>
+</main>
+
+<script>
+const RULES = [[4, 1, 9], [3, 1, 9], [2, 1, 9], [3, 2, 6], [4, 3, 6]].map(([columns, traps, rows]) => ({ columns, traps, rows }));
+const TEST = {
+  serverSeed: "0".repeat(64), clientSeed: "player", nonce: 1, difficulty: 0,
+  hash: "60e05bd1b195af2f94112fa7197a5c88289058840ce7c6df9693756bc6250f55",
+  mac0: "649dc01de124b3759108d7d3d858d4c874b36b14646c8450fa16a04fc9a6f9c5",
+  safe: "[[2,3,4],[1,2,4],[1,3,4],[1,2,3],[1,2,4],[1,2,3],[1,2,4],[1,2,3],[1,2,4]]",
+};
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+
+async function sha256(text) {
+  return hex(await crypto.subtle.digest("SHA-256", enc.encode(text)));
+}
+
+async function hmacKey(key) {
+  return crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+async function compute(serverSeed, clientSeed, nonce, difficulty) {
+  const rule = RULES[difficulty];
+  const key = await hmacKey(serverSeed);
+  const rows = [];
+  for (let r = 0; r < rule.rows; r += 1) {
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`${clientSeed}:${nonce}:${r}`)));
+    const view = new DataView(mac.buffer);
+    const left = Array.from({ length: rule.columns }, (_, i) => i + 1);
+    const safe = [];
+    for (let j = 0; j < rule.columns - rule.traps; j += 1) {
+      const index = Math.floor((view.getUint32(j * 4) * left.length) / 2 ** 32);
+      safe.push(left.splice(index, 1)[0]);
+    }
+    rows.push({ mac: hex(mac), safe: safe.sort((a, b) => a - b) });
+  }
+  return { hash: await sha256(serverSeed), rows, rule };
+}
+
+async function render() {
+  const serverSeed = $("s").value;
+  const clientSeed = $("c").value;
+  const nonce = $("n").value.trim();
+  const difficulty = Number($("d").value);
+  if (!serverSeed || !clientSeed || !/^\d+$/.test(nonce)) {
+    $("o-hash").textContent = "Enter server seed, client seed and nonce";
+    $("rows").innerHTML = "";
+    $("tower").innerHTML = "";
+    return;
+  }
+  const r = await compute(serverSeed, clientSeed, nonce, difficulty);
+  $("o-hash").textContent = r.hash;
+  $("rows").innerHTML = r.rows.map((row, i) => `<tr><td>${i + 1}</td><td>${row.mac}</td><td>${row.safe.join(", ")}</td></tr>`).join("");
+  $("tower").innerHTML = r.rows.map((row, i) => {
+    const cells = Array.from({ length: r.rule.columns }, (_, k) => {
+      const safe = row.safe.includes(k + 1);
+      return `<div class="cell ${safe ? "" : "trap"}">${safe ? "safe" : "trap"}</div>`;
+    }).join("");
+    return `<div class="row" style="--cols:${r.rule.columns}"><span>Row ${i + 1}</span>${cells}</div>`;
+  }).join("");
+}
+
+async function selfTest() {
+  const r = await compute(TEST.serverSeed, TEST.clientSeed, TEST.nonce, TEST.difficulty);
+  const ok = r.hash === TEST.hash && r.rows[0].mac === TEST.mac0 && JSON.stringify(r.rows.map((x) => x.safe)) === TEST.safe;
+  $("o-test").innerHTML = `<span class="badge ${ok ? "ok" : "bad"}">${ok ? "pass" : "fail"}</span> <code>64×"0" / player / 1 / Easy</code>`;
+}
+
+const q = new URLSearchParams(location.search);
+$("s").value = q.get("s") || "";
+$("c").value = q.get("c") || "";
+$("n").value = q.get("n") || "";
+if (/^[0-4]$/.test(q.get("d") || "")) $("d").value = q.get("d");
+const repo = document.querySelector('meta[name="source-repo"]');
+if (repo) $("src").href = repo.content;
+$("form").addEventListener("input", render);
+selfTest();
+render();
+</script>
+</body>
+</html>

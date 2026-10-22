@@ -5,6 +5,7 @@ Static, dependency-free verifier pages for Originals games. Each page recomputes
 | Game | ID | Page |
 |---|---|---|
 | Stellar Rush | 26001 | `stellar_rush.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<meteors>` |
+| Tower Legend | 26002 | `tower_legend.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<difficulty 0-4>` |
 
 ## Stellar Rush algorithm
 
@@ -18,3 +19,15 @@ Static, dependency-free verifier pages for Originals games. Each page recomputes
 
 Test vector (checked on every page load): server seed = 64 × `0`, client seed `player`, nonce 1 →
 hash `60e05bd1…6250f55`, HMAC `a5cc9801…eebea5100`, order `7 19 11 17 20 12 2 25 14 6 3 4 21 10 8 9 15 18 23 22 16 1 5 24 13`.
+
+## Tower Legend algorithm
+
+- Rules (columns / traps / rows): Easy 4/1/9, Medium 3/1/9, Hard 2/1/9, Extreme 3/2/6, Nightmare 4/3/6.
+- Before the bet the game commits to `SHA256(serverSeed)` (lowercase hex of the UTF-8 text).
+- For each row `r` (from 0, bottom row first): `mac = HMAC-SHA256(key = serverSeed, message = clientSeed + ":" + nonce + ":" + r)` as 32 bytes.
+- Candidates `[1 … columns]`. For `j = 0 … columns − traps − 1`: `u` = big-endian uint32 of bytes `[4j, 4j+4)`, `index = floor(u × remaining / 2^32)`, remove that candidate; it is a safe tile.
+- The removed candidates sorted ascending are the row's safe tiles; the rest are traps.
+- Multiplier after `n` safe rows: `floor(98 × columns^n / (columns − traps)^n) / 100`.
+
+Test vector (checked on every page load): server seed = 64 × `0`, client seed `player`, nonce 1, Easy →
+row 0 HMAC `649dc01d…c9a6f9c5`, safe tiles `[2,3,4] [1,2,4] [1,3,4] [1,2,3] [1,2,4] [1,2,3] [1,2,4] [1,2,3] [1,2,4]`.
