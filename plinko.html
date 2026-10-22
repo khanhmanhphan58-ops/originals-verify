@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Plinko · Provably Fair Verifier</title>
+<meta name="source-repo" content="https://github.com/khanhmanhphan58-ops/originals-verify/blob/main/plinko.html" />
+<style>
+  :root { --bg: #14161a; --panel: #1e2127; --line: #2c3038; --text: #e6e9ee; --muted: #8b93a1; --ok: #24ee89; --bad: #ff5d73; --hit: #ffc83d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--muted); font-weight: 600; }
+  a { color: var(--ok); }
+  form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  label.wide { grid-column: 1 / -1; }
+  label.half { grid-column: span 1; }
+  input, select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kv { display: grid; grid-template-columns: 220px 1fr; gap: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  th { color: var(--muted); font-family: inherit; font-weight: 600; }
+  td.r { color: var(--ok); }
+  td.l { color: var(--muted); }
+  .slots { display: flex; flex-wrap: wrap; gap: 4px; }
+  .slot { min-width: 46px; padding: 6px 4px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); text-align: center; font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .slot.hit { background: var(--hit); border-color: var(--hit); color: #1b1200; font-weight: 700; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(36, 238, 137, .15); color: var(--ok); }
+  .badge.bad { background: rgba(255, 93, 115, .15); color: var(--bad); }
+  ol { padding-left: 20px; color: var(--muted); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Plinko · Provably Fair Verifier</h1>
+  </header>
+  <p class="note">Everything is computed in your browser from the revealed seeds. Nothing is sent to any server.</p>
+
+  <h2>Input</h2>
+  <form id="form" autocomplete="off">
+    <label class="wide"><span>Server Seed (revealed after the seed pair is rotated)</span><input id="s" spellcheck="false" /></label>
+    <label class="wide"><span>Client Seed</span><input id="c" spellcheck="false" /></label>
+    <label><span>Nonce</span><input id="n" inputmode="numeric" /></label>
+    <label><span>Rows</span><select id="r"></select></label>
+    <label><span>Risk</span>
+      <select id="k">
+        <option value="1">Regular</option>
+        <option value="2">High</option>
+        <option value="3">Nightmare</option>
+      </select>
+    </label>
+    <label class="wide"><span>Side bias</span>
+      <select id="b">
+        <option value="0">Classic</option>
+        <option value="1">Left</option>
+        <option value="2">Right</option>
+      </select>
+    </label>
+  </form>
+
+  <h2>Output</h2>
+  <dl class="kv">
+    <dt>sha256(server_seed)</dt><dd id="o-hash">-</dd>
+    <dt>hmac_sha512(client_seed:nonce, server_seed)</dt><dd id="o-mac">-</dd>
+    <dt>Self-test vector</dt><dd id="o-test">-</dd>
+  </dl>
+  <p class="note">Compare the SHA256 above with the server seed hash shown in the game before you placed the bet.</p>
+  <table>
+    <thead><tr><th>Row</th><th>Bytes</th><th>Number in [0, 1)</th><th>Direction</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <h2>Final Result</h2>
+  <dl class="kv">
+    <dt>Path (0 = left, 1 = right)</dt><dd id="o-path">-</dd>
+    <dt>Slot (number of rights)</dt><dd id="o-slot">-</dd>
+    <dt>Multiplier</dt><dd id="o-multi">-</dd>
+  </dl>
+  <h2>Pay table · slot 0 on the left</h2>
+  <div class="slots" id="slots"></div>
+
+  <h2>Algorithm</h2>
+  <ol>
+    <li>Commitment: before the bet the game shows SHA256(serverSeed) as lowercase hex. Every ball (demo balls included) uses the next nonce of the seed pair, starting from 1.</li>
+    <li>mac = HMAC-SHA512(key = serverSeed, message = clientSeed + ":" + nonce), as 64 bytes.</li>
+    <li>Row i = 0 … rows − 1 uses bytes [4i, 4i + 4): x = b0/256 + b1/256² + b2/256³ + b3/256⁴. The ball goes right when x &gt; 0.5, otherwise left.</li>
+    <li>Slot = number of rights (0 … rows). Multiplier = pay table [risk][rows][bias][slot]; payout = amount × multiplier, truncated to 4 decimals.</li>
+    <li>Left bias doubles the Classic multiplier on slots with 2 × slot &lt; rows, keeps the middle slot when rows is even, and pays 0 elsewhere. Right is the mirror image. All 27 tables return the same RTP for Classic, Left and Right (≈ 98%).</li>
+    <li>Nonces used by balls that were rejected by the platform or never confirmed have no settled result, so the settled history of a seed may skip some nonces.</li>
+  </ol>
+  <p class="note"><span>Source code:</span> <a id="src" href="./" target="_blank" rel="noopener">GitHub</a></p>
+</main>
+
+<script>
+const CLASSIC = [[[6.8,1.8,1.1,1,0.5,1,1.1,1.8,6.8],[6,2.1,1.5,1,0.7,0.7,1,1.5,2.1,6],[8.7,3,1.3,1.1,1,0.5,1,1.1,1.3,3,8.7],[9,3.8,2.1,1.4,1,0.6,0.6,1,1.4,2.1,3.8,9],[11,3,2,1.4,1.1,1,0.4,1,1.1,1.4,2,3,11],[17,4,3.5,2,1.1,1,0.6,0.6,1,1.1,2,3.5,4,17],[10,5,2,1.4,1.2,1.1,1,0.5,1,1.1,1.2,1.4,2,5,10],[20,8,4,2.5,1.5,1.2,1.1,0.5,0.5,1.1,1.2,1.5,2.5,4,8,20],[100,10,3,1.6,1.4,1.2,1.1,1,0.4,1,1.1,1.2,1.4,1.6,3,10,100]],[[24.4,3,1.5,0.5,0.2,0.5,1.5,3,24.4],[45.3,7,2.1,0.5,0.2,0.2,0.5,2.1,7,45.3],[78,9,2.8,1,0.3,0.2,0.3,1,2.8,9,78],[125,12,5,1.5,0.4,0.2,0.2,0.4,1.5,5,12,125],[178,24,8,2,0.7,0.2,0.15,0.2,0.7,2,8,24,178],[271,39,10,4,1,0.2,0.2,0.2,0.2,1,4,10,39,271],[430,50,18,5,2,0.25,0.2,0.2,0.2,0.25,2,5,18,50,430],[640,89,29,8,3,0.45,0.2,0.15,0.15,0.2,0.45,3,8,29,89,640],[1000,162,38,9,3,1.5,0.5,0.2,0.1,0.2,0.5,1.5,3,9,38,162,1000]],[[40,5,1.1,0.2,0.1,0.2,1.1,5,40],[100,8.3,1.3,0.2,0.1,0.1,0.2,1.3,8.3,100],[253,10,1.3,0.3,0.2,0.1,0.2,0.3,1.3,10,253],[500,10,2,1,0.22,0.1,0.1,0.22,1,2,10,500],[750,15,5.5,1.2,0.5,0.2,0.1,0.2,0.5,1.2,5.5,15,750],[1500,25.5,7.5,2.4,0.5,0.3,0.1,0.1,0.3,0.5,2.4,7.5,25.5,1500],[2500,49,13,3,1.2,0.3,0.2,0.1,0.2,0.3,1.2,3,13,49,2500],[5000,123,18,6,1.5,0.3,0.2,0.1,0.1,0.2,0.3,1.5,6,18,123,5000],[10000,225,20,5,2,1,0.3,0.2,0.1,0.2,0.3,1,2,5,20,225,10000]]];
+const TEST = {
+  serverSeed: "0".repeat(64), clientSeed: "player", nonce: 1, rows: 16,
+  hash: "60e05bd1b195af2f94112fa7197a5c88289058840ce7c6df9693756bc6250f55",
+  mac: "965f94454e8761efec68380ddc5cd016379618a93333e865199da6c6cb28d05aeab37f9712f7940770e94103f0931945044b58d4b209dae16e215af2522b9883",
+  path: "1011000110010100",
+};
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+
+function table(risk, rows, bias) {
+  const classic = CLASSIC[risk - 1][rows - 8];
+  if (bias === 0) return classic;
+  return classic.map((m, slot) => {
+    const near = bias === 1 ? slot : rows - slot;
+    if (2 * near < rows) return Math.round(m * 200) / 100;
+    return 2 * near === rows ? m : 0;
+  });
+}
+
+async function compute(serverSeed, clientSeed, nonce, rows) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(serverSeed), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`${clientSeed}:${nonce}`)));
+  const steps = [];
+  for (let i = 0; i < rows; i += 1) {
+    const b = mac.slice(i * 4, i * 4 + 4);
+    const x = b[0] / 256 + b[1] / 256 ** 2 + b[2] / 256 ** 3 + b[3] / 256 ** 4;
+    steps.push({ bytes: hex(b), x, right: x > 0.5 });
+  }
+  const hash = hex(await crypto.subtle.digest("SHA-256", enc.encode(serverSeed)));
+  return { hash, mac: hex(mac), steps, path: steps.map((s) => (s.right ? 1 : 0)).join(""), slot: steps.filter((s) => s.right).length };
+}
+
+const fmt = (m) => (m >= 100 ? String(m) : m.toFixed(2));
+
+function slotsHtml(list, hit) {
+  return list.map((m, i) => `<div class="slot ${i === hit ? "hit" : ""}">${fmt(m)}×</div>`).join("");
+}
+
+async function render() {
+  const serverSeed = $("s").value;
+  const clientSeed = $("c").value;
+  const nonce = $("n").value.trim();
+  const rows = Number($("r").value);
+  const risk = Number($("k").value);
+  const bias = Number($("b").value);
+  const list = table(risk, rows, bias);
+  if (!serverSeed || !clientSeed || !/^\d+$/.test(nonce)) {
+    $("o-hash").textContent = "Enter server seed, client seed and nonce";
+    for (const id of ["o-mac", "o-path", "o-slot", "o-multi"]) $(id).textContent = "-";
+    $("rows").innerHTML = "";
+    $("slots").innerHTML = slotsHtml(list, -1);
+    return;
+  }
+  const r = await compute(serverSeed, clientSeed, nonce, rows);
+  $("o-hash").textContent = r.hash;
+  $("o-mac").textContent = r.mac;
+  $("rows").innerHTML = r.steps
+    .map((s, i) => `<tr><td>${i + 1}</td><td>${s.bytes}</td><td>${s.x}</td><td class="${s.right ? "r" : "l"}">${s.right ? "Right" : "Left"}</td></tr>`)
+    .join("");
+  $("o-path").textContent = r.path;
+  $("o-slot").textContent = String(r.slot);
+  $("o-multi").textContent = `${fmt(list[r.slot])}×`;
+  $("slots").innerHTML = slotsHtml(list, r.slot);
+}
+
+async function selfTest() {
+  const r = await compute(TEST.serverSeed, TEST.clientSeed, TEST.nonce, TEST.rows);
+  const ok = r.hash === TEST.hash && r.mac === TEST.mac && r.path === TEST.path && r.slot === 7;
+  $("o-test").innerHTML = `<span class="badge ${ok ? "ok" : "bad"}">${ok ? "pass" : "fail"}</span> <code>64×"0" / player / 1 / 16 rows</code>`;
+}
+
+$("r").innerHTML = Array.from({ length: 9 }, (_, i) => `<option value="${i + 8}">${i + 8}</option>`).join("");
+const q = new URLSearchParams(location.search);
+$("s").value = q.get("s") || "";
+$("c").value = q.get("c") || "";
+$("n").value = q.get("n") || "";
+$("r").value = /^(8|9|1[0-6])$/.test(q.get("r") || "") ? q.get("r") : "16";
+if (/^[1-3]$/.test(q.get("k") || "")) $("k").value = q.get("k");
+if (/^[0-2]$/.test(q.get("b") || "")) $("b").value = q.get("b");
+const repo = document.querySelector('meta[name="source-repo"]');
+if (repo) $("src").href = repo.content;
+$("form").addEventListener("input", render);
+selfTest();
+render();
+</script>
+</body>
+</html>

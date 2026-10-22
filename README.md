@@ -6,6 +6,7 @@ Static, dependency-free verifier pages for Originals games. Each page recomputes
 |---|---|---|
 | Stellar Rush | 26001 | `stellar_rush.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<meteors>` |
 | Tower Legend | 26002 | `tower_legend.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<difficulty 0-4>` |
+| Plinko | 26003 | `plinko.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&r=<rows 8-16>&k=<risk 1-3>&b=<bias 0-2>` |
 
 ## Stellar Rush algorithm
 
@@ -31,3 +32,14 @@ hash `60e05bd1…6250f55`, HMAC `a5cc9801…eebea5100`, order `7 19 11 17 20 12 
 
 Test vector (checked on every page load): server seed = 64 × `0`, client seed `player`, nonce 1, Easy →
 row 0 HMAC `649dc01d…c9a6f9c5`, safe tiles `[2,3,4] [1,2,4] [1,3,4] [1,2,3] [1,2,4] [1,2,3] [1,2,4] [1,2,3] [1,2,4]`.
+
+## Plinko algorithm
+
+- Before the bet the game commits to `SHA256(serverSeed)`. Every ball, demo balls included, takes the next nonce of the seed pair, starting from 1.
+- `mac = HMAC-SHA512(key = serverSeed, message = clientSeed + ":" + nonce)` as 64 bytes.
+- Row `i` (0 … rows − 1) uses bytes `[4i, 4i+4)`: `x = b0/256 + b1/256² + b2/256³ + b3/256⁴`; right when `x > 0.5`, otherwise left.
+- Slot = number of rights. Multiplier = pay table `[risk][rows][bias][slot]`; payout = amount × multiplier, truncated to 4 decimals.
+- Risk 1 Regular, 2 High, 3 Nightmare; bias 0 Classic, 1 Left, 2 Right. Left doubles Classic on slots with `2 × slot < rows`, keeps the middle slot when rows is even, pays 0 elsewhere; Right mirrors Left.
+
+Test vector (checked on every page load): server seed = 64 × `0`, client seed `player`, nonce 1, 16 rows →
+HMAC `965f9445…522b9883`, path `1011000110010100`, slot 7.
