@@ -7,6 +7,7 @@ Static, dependency-free verifier pages for Originals games. Each page recomputes
 | Stellar Rush | 26001 | `stellar_rush.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<meteors>` |
 | Tower Legend | 26002 | `tower_legend.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&d=<difficulty 0-4>` |
 | Plinko | 26003 | `plinko.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&r=<rows 8-16>&k=<risk 1-3>&b=<bias 0-2>` |
+| Bingo | 26004 | `bingo.html?s=<serverSeed>&c=<clientSeed>&n=<nonce>&cards=<card>_<card>…` (each card: 25 comma-separated numbers row by row, centre 0; optional) |
 
 ## Stellar Rush algorithm
 
@@ -43,3 +44,14 @@ row 0 HMAC `649dc01d…c9a6f9c5`, safe tiles `[2,3,4] [1,2,4] [1,3,4] [1,2,3] [1
 
 Test vector (checked on every page load): server seed = 64 × `0`, client seed `player`, nonce 1, 16 rows →
 HMAC `965f9445…522b9883`, path `1011000110010100`, slot 7.
+
+## Bingo algorithm
+
+- Before the bet the game commits to `SHA256(serverSeed)`. Every round, demo rounds included and whatever the number of cards, takes the next nonce of the seed pair, starting from 1.
+- 20 balls are drawn without replacement from 1 … 51. Ball `i` (0 … 19): `h = HMAC-SHA256(key = serverSeed + ":" + i, message = clientSeed + ":" + nonce)` as lowercase hex; `start = int(h[0:15], 16) mod 47`; `num = int(h[start:start+14], 16) >> 3`; `index = floor(num × left / 2^53)` with `left = 51 − i`; the ball is the number at `index` of the remaining numbers in ascending order.
+- A card is 5 × 5: 24 different numbers from 1 … 51 and a free centre (written as 0). 12 lines: rows, columns and both diagonals; a line wins when its 5 cells are all drawn.
+- Multiplier per card by winning lines: 1 → 5, 2 → 50, 3 → 260, 4 → 520, 5 → 1000, 6+ → 10000, none → 0. Card payout = amount per card × multiplier, truncated to 4 decimals; the round pays the sum over its cards.
+- The page floors the exact integer product. Verifiers that apply `parseInt` to the floating-point product differ only when the product is below 10⁻⁶.
+
+Test vectors (checked on every page load): server seed = 64 × `0`, client seed `player` →
+nonce 1 balls `15 19 18 13 16 21 7 34 51 28 3 4 17 25 46 20 10 14 39 24` (ball 0 HMAC `4d7fdabc…15dca4c6`), nonce 3 balls `36 21 30 46 28 45 12 16 34 1 50 39 38 6 5 32 44 13 29 42`; with nonce 1, card `15,19,18,13,16,1,2,5,6,8,9,11,0,12,22,23,26,27,29,30,31,32,33,35,36` wins row 1 (5×).

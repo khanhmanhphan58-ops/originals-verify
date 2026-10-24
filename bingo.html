@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bingo · Provably Fair Verifier</title>
+<meta name="source-repo" content="https://github.com/khanhmanhphan58-ops/originals-verify/blob/main/bingo.html" />
+<style>
+  :root { --bg: #14161a; --panel: #1e2127; --line: #2c3038; --text: #e6e9ee; --muted: #8b93a1; --ok: #24ee89; --bad: #ff5d73; --hit: #ffc83d; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: var(--muted); font-weight: 600; }
+  a { color: var(--ok); }
+  form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  label.wide { grid-column: 1 / -1; }
+  input, textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  textarea { min-height: 84px; resize: vertical; }
+  .kv { display: grid; grid-template-columns: 220px 1fr; gap: 6px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  th { color: var(--muted); font-family: inherit; font-weight: 600; }
+  td.b { color: var(--hit); font-weight: 700; }
+  .balls { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ball { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cards { display: flex; flex-wrap: wrap; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .card h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(5, 36px); gap: 4px; }
+  .cell { height: 32px; border-radius: 6px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--line); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .cell.hit { background: var(--hit); border-color: var(--hit); color: #1b1200; font-weight: 700; }
+  .cell.free { background: rgba(36, 238, 137, .15); border-color: var(--ok); color: var(--ok); }
+  .card p { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+  .card p b { color: var(--text); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .err { color: var(--bad); font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(36, 238, 137, .15); color: var(--ok); }
+  .badge.bad { background: rgba(255, 93, 115, .15); color: var(--bad); }
+  ol { padding-left: 20px; color: var(--muted); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+  @media (max-width: 640px) { form { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bingo · Provably Fair Verifier</h1>
+  </header>
+  <p class="note">Everything is computed in your browser from the revealed seeds. Nothing is sent to any server.</p>
+
+  <h2>Input</h2>
+  <form id="form" autocomplete="off">
+    <label class="wide"><span>Server Seed (revealed after the seed pair is rotated)</span><input id="s" spellcheck="false" /></label>
+    <label class="wide"><span>Client Seed</span><input id="c" spellcheck="false" /></label>
+    <label><span>Nonce</span><input id="n" inputmode="numeric" /></label>
+    <label class="wide"><span>Cards (optional) · one card per line, 25 numbers row by row, centre = 0</span><textarea id="k" spellcheck="false" placeholder="15,19,18,13,16,1,2,5,6,8,9,11,0,12,22,23,26,27,29,30,31,32,33,35,36"></textarea></label>
+  </form>
+
+  <h2>Output</h2>
+  <dl class="kv">
+    <dt>sha256(server_seed)</dt><dd id="o-hash">-</dd>
+    <dt>Self-test vectors</dt><dd id="o-test">-</dd>
+  </dl>
+  <p class="note">Compare the SHA256 above with the server seed hash shown in the game before you placed the bet.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>#</th><th>hmac_sha256(client_seed:nonce, server_seed:#)</th><th>Start</th><th>14 hex</th><th>Left</th><th>Index</th><th>Ball</th></tr></thead>
+      <tbody id="steps"></tbody>
+    </table>
+  </div>
+
+  <h2>Final Result</h2>
+  <dl class="kv">
+    <dt>Balls in draw order</dt><dd id="o-balls">-</dd>
+  </dl>
+  <div class="balls" id="balls" style="margin-top:10px"></div>
+
+  <h2>Cards</h2>
+  <div id="cards-err" class="err"></div>
+  <div class="cards" id="cards"><p class="note">Paste the cards of the round above to see the lines and multipliers.</p></div>
+
+  <h2>Algorithm</h2>
+  <ol>
+    <li>Commitment: before the bet the game shows SHA256(serverSeed) as lowercase hex. Every round (demo rounds included, any number of cards) uses the next nonce of the seed pair, starting from 1.</li>
+    <li>20 balls are drawn without replacement from 1 … 51. For ball i = 0 … 19: h = HMAC-SHA256(key = serverSeed + ":" + i, message = clientSeed + ":" + nonce), as 64 lowercase hex digits.</li>
+    <li>start = int(h[0 … 15), 16) mod 47; num = int(h[start … start + 14), 16) &gt;&gt; 3 (a 53-bit integer).</li>
+    <li>index = floor(num × left / 2<sup>53</sup>), where left = 51 − i is the count of numbers not drawn yet; the ball is the number at that index of the remaining numbers in ascending order.</li>
+    <li>A card is 5 × 5 with 24 different numbers from 1 … 51 and a free centre. There are 12 lines: 5 rows, 5 columns and 2 diagonals; a line wins when all 5 of its cells are drawn (the centre always counts).</li>
+    <li>Multiplier by winning lines on a card: 1 → 5×, 2 → 50×, 3 → 260×, 4 → 520×, 5 → 1000×, 6 or more → 10000×, none → 0. Card payout = amount per card × multiplier, truncated to 4 decimals; the round pays the sum over all cards (RTP ≈ 98.01%).</li>
+    <li>This page floors the exact product. Some other verifiers convert the floating-point product with parseInt, which differs only when the product is below 10<sup>−6</sup> (about 2 × 10<sup>−8</sup> per ball).</li>
+    <li>Nonces used by rounds that were rejected by the platform or never confirmed have no settled result, so the settled history of a seed may skip some nonces.</li>
+  </ol>
+  <p class="note"><span>Source code:</span> <a id="src" href="./" target="_blank" rel="noopener">GitHub</a></p>
+</main>
+
+<script>
+const PAY = [0, 5, 50, 260, 520, 1000];
+const LINES = [
+  ...Array.from({ length: 5 }, (_, r) => [0, 1, 2, 3, 4].map((c) => r * 5 + c)),
+  ...Array.from({ length: 5 }, (_, c) => [0, 1, 2, 3, 4].map((r) => r * 5 + c)),
+  [0, 6, 12, 18, 24],
+  [4, 8, 12, 16, 20],
+];
+const LINE_NAMES = ["row 1", "row 2", "row 3", "row 4", "row 5", "column 1", "column 2", "column 3", "column 4", "column 5", "diagonal ↘", "diagonal ↙"];
+const TEST = {
+  serverSeed: "0".repeat(64), clientSeed: "player",
+  hash: "60e05bd1b195af2f94112fa7197a5c88289058840ce7c6df9693756bc6250f55",
+  balls: {
+    1: "15,19,18,13,16,21,7,34,51,28,3,4,17,25,46,20,10,14,39,24",
+    3: "36,21,30,46,28,45,12,16,34,1,50,39,38,6,5,32,44,13,29,42",
+  },
+  cards: [
+    { card: [15, 19, 18, 13, 16, 1, 2, 5, 6, 8, 9, 11, 0, 12, 22, 23, 26, 27, 29, 30, 31, 32, 33, 35, 36], lines: "0", multi: 5 },
+    { card: [15, 1, 19, 2, 5, 6, 18, 13, 8, 9, 16, 21, 0, 7, 34, 11, 12, 51, 28, 22, 23, 26, 3, 27, 4], lines: "2,7,10", multi: 260 },
+    { card: [50, 49, 48, 47, 45, 44, 43, 42, 41, 40, 38, 37, 0, 36, 35, 33, 32, 31, 30, 29, 27, 26, 23, 22, 12], lines: "", multi: 0 },
+  ],
+};
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+
+async function hmacHex(key, message) {
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", k, enc.encode(message)));
+}
+
+async function draw(serverSeed, clientSeed, nonce) {
+  const left = Array.from({ length: 51 }, (_, i) => i + 1);
+  const steps = [];
+  for (let i = 0; i < 20; i += 1) {
+    const h = await hmacHex(`${serverSeed}:${i}`, `${clientSeed}:${nonce}`);
+    const start = Number(BigInt(`0x${h.slice(0, 15)}`) % 47n);
+    const piece = h.slice(start, start + 14);
+    const num = BigInt(`0x${piece}`) >> 3n;
+    const count = left.length;
+    const index = Number((num * BigInt(count)) >> 53n);
+    const [ball] = left.splice(index, 1);
+    steps.push({ h, start, piece, count, index, ball });
+  }
+  return steps;
+}
+
+function evaluate(card, balls) {
+  const drawn = new Set(balls);
+  const hit = (i) => i === 12 || drawn.has(card[i]);
+  const lines = LINES.map((cells, id) => (cells.every(hit) ? id : -1)).filter((id) => id >= 0);
+  return { hits: card.map((_, i) => hit(i)), lines, multi: lines.length >= 6 ? 10000 : PAY[lines.length] };
+}
+
+function parseCards(text) {
+  const cards = [];
+  const rows = text.split(/[\n;|_]+/).map((s) => s.trim()).filter(Boolean);
+  for (const [n, row] of rows.entries()) {
+    const nums = row.split(/[^0-9]+/).filter(Boolean).map(Number);
+    const others = nums.filter((_, i) => i !== 12);
+    const valid = nums.length === 25 && nums[12] === 0 && others.every((x) => x >= 1 && x <= 51) && new Set(others).size === 24;
+    if (!valid) throw new Error(`Card ${n + 1}: need 25 numbers, centre 0, the other 24 different numbers from 1 to 51`);
+    cards.push(nums);
+  }
+  return cards;
+}
+
+function cardHtml(card, n, r) {
+  const cells = card.map((x, i) => `<div class="cell ${i === 12 ? "free" : r.hits[i] ? "hit" : ""}">${i === 12 ? "★" : x}</div>`).join("");
+  const names = r.lines.map((id) => LINE_NAMES[id]).join(", ") || "none";
+  return `<div class="card"><h3>Card ${n + 1}</h3><div class="grid">${cells}</div><p>Lines: <b>${r.lines.length}</b> (${names})</p><p>Multiplier: <b>${r.multi}×</b></p></div>`;
+}
+
+let seq = 0;
+async function render() {
+  const run = (seq += 1);
+  const serverSeed = $("s").value;
+  const clientSeed = $("c").value;
+  const nonce = $("n").value.trim();
+  let cards = [];
+  $("cards-err").textContent = "";
+  try {
+    cards = parseCards($("k").value);
+  } catch (error) {
+    $("cards-err").textContent = error.message;
+  }
+  if (!serverSeed || !clientSeed || !/^\d+$/.test(nonce)) {
+    $("o-hash").textContent = "Enter server seed, client seed and nonce";
+    $("o-balls").textContent = "-";
+    $("steps").innerHTML = "";
+    $("balls").innerHTML = "";
+    $("cards").innerHTML = '<p class="note">Paste the cards of the round above to see the lines and multipliers.</p>';
+    return;
+  }
+  const hash = hex(await crypto.subtle.digest("SHA-256", enc.encode(serverSeed)));
+  const steps = await draw(serverSeed, clientSeed, nonce);
+  if (run !== seq) return;
+  const balls = steps.map((s) => s.ball);
+  $("o-hash").textContent = hash;
+  $("steps").innerHTML = steps
+    .map((s, i) => `<tr><td>${i + 1}</td><td>${s.h}</td><td>${s.start}</td><td>${s.piece}</td><td>${s.count}</td><td>${s.index}</td><td class="b">${s.ball}</td></tr>`)
+    .join("");
+  $("o-balls").textContent = balls.join(", ");
+  $("balls").innerHTML = balls.map((b) => `<div class="ball">${b}</div>`).join("");
+  $("cards").innerHTML = cards.length
+    ? cards.map((card, n) => cardHtml(card, n, evaluate(card, balls))).join("")
+    : '<p class="note">Paste the cards of the round above to see the lines and multipliers.</p>';
+}
+
+async function selfTest() {
+  const hash = hex(await crypto.subtle.digest("SHA-256", enc.encode(TEST.serverSeed)));
+  let ok = hash === TEST.hash;
+  const drawn = {};
+  for (const nonce of Object.keys(TEST.balls)) {
+    drawn[nonce] = (await draw(TEST.serverSeed, TEST.clientSeed, nonce)).map((s) => s.ball);
+    ok = ok && drawn[nonce].join(",") === TEST.balls[nonce];
+  }
+  for (const t of TEST.cards) {
+    const r = evaluate(t.card, drawn[1]);
+    ok = ok && r.lines.join(",") === t.lines && r.multi === t.multi;
+  }
+  $("o-test").innerHTML = `<span class="badge ${ok ? "ok" : "bad"}">${ok ? "pass" : "fail"}</span> <code>64×"0" / player / nonce 1 and 3, 3 cards</code>`;
+}
+
+const q = new URLSearchParams(location.search);
+$("s").value = q.get("s") || "";
+$("c").value = q.get("c") || "";
+$("n").value = q.get("n") || "";
+$("k").value = (q.get("cards") || "").split("_").filter(Boolean).join("\n");
+const repo = document.querySelector('meta[name="source-repo"]');
+if (repo) $("src").href = repo.content;
+$("form").addEventListener("input", render);
+selfTest();
+render();
+</script>
+</body>
+</html>
